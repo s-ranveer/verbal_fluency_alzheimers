@@ -3,6 +3,7 @@ import json
 import pandas as pd
 import wordfreq
 import nltk
+import pronouncing
 
 def word_frequency(response: str, aggregate: str="mean") -> float:
     # We would use the wordfreq library to calculate the frequency of words in the response
@@ -95,10 +96,7 @@ def age_of_acquisition(response: str, aoa_path: str, aggregate: str="mean") -> f
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
 def neigborhood_density(response: str, clustering_type: str="semantic", **kwargs) -> dict:
-    words = response.strip().split(",")
-    num_words = len(words)
-    num_switches = 0
-    avg_cluster_size = 0.0
+    words = response.strip().lower().split(",")
     if clustering_type == "semantic":
         # We would consider the list of words generated from the response and create clusters on consecutive words based on
         # whether they 
@@ -125,7 +123,72 @@ def neigborhood_density(response: str, clustering_type: str="semantic", **kwargs
             
     elif clustering_type == "phonetic":
         # If the words are to clustered based on phonetic similarity, we would do the following 
-        pass
+        # If the two words have the same first two letters, or differ by a vowel sound, rhyme or are homonyms, 
+        # they belong to the same cluster
+        
+        # Assign groups based on first two letters
+        group_words = {}
+        for word in words:
+            first_two = f"FT_{word[:2]}"
+            if first_two not in group_words:
+                group_words[first_two] = []
+            group_words[first_two].append(word)
+
+        # Assign groups based on pronounciation feature
+        for w1 in words:
+            for w2 in words:
+                if w1 == w2:
+                    continue
+                phones_w1 = pronouncing.phones_for_word(w1)
+                phones_w2 = pronouncing.phones_for_word(w2)
+
+                # Check for vowel sound difference, rhyme, or homonymy
+                if (pronouncing.rhymes(w1) and w2 in pronouncing.rhymes(w1)):
+                    group_id = f"RHYME_{w1}"
+                    if group_id not in group_words:
+                        group_words[group_id] = [w1]
+                    group_words[group_id].append(w2)
+                
+                # Check if the words are homonyms
+                elif phones_w1 and set(phones_w1) == set(phones_w2):
+                    group_id = f"HOMONYM_{str(set(phones_w1))}"
+                    if group_id not in group_words:
+                        group_words[group_id] = [w1]
+                    group_words[group_id].append(w2)
+                
+                else:
+                    # Check for the vowel sound difference. If the words differ by only one vowel sound and everything else is the same
+                    # we would consider them to be in the same group with everything other than the vowel sound making the group id
+                    if phones_w1 and phones_w2:
+                        # Find differences in phonetic representation across different pronunciations
+                        for pron1 in phones_w1:
+                            for pron2 in phones_w2:
+                                if len(pron1) != len(pron2):
+                                    continue
+                                else:
+                                    diff_count = 0
+                                    diff_positions = []
+                                    for i, (p1, p2) in enumerate(zip(pron1.split(), pron2.split())):
+                                        if p1 != p2:
+                                            diff_count += 1
+                                            diff_positions.append(i)
+                                    if diff_count == 1:
+                                        is_vowel_diff = False
+                                        diff_index = diff_positions[0]
+
+                                        # The vowels in ARPAbet have numbers in them
+                                        if pron1.split()[diff_index][-1].isdigit() and pron2.split()[diff_index][-1].isdigit():
+                                            is_vowel_diff = True
+                                        if is_vowel_diff:
+                                            # The group id would be based on everything other than the differing vowel sound
+                                            group_id = f"VOWEL_DIFF_{w1}"
+                                            if group_id not in group_words:
+                                                group_words[group_id] = [w1]
+                                            group_words[group_id].append(w2)
+                                            break
+                    else:
+                        continue
+
     else:
         raise NotImplementedError(f"Clustering type {clustering_type} not implemented. Use 'semantic' or 'phonetic'.")
     
@@ -171,7 +234,7 @@ def neigborhood_density(response: str, clustering_type: str="semantic", **kwargs
     
     num_switches = current_cluster_id
     avg_cluster_size = sum(len(cluster)-1 for cluster in clusters.values()) / len(clusters) if clusters else 0.0
-    return {"num_switches": num_switches, "avg_cluster_size": avg_cluster_size, "total_words": num_words}
+    return {"num_switches": num_switches, "avg_cluster_size": avg_cluster_size, "total_words": len(set(words))}
 
 def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean") -> float:
     """
