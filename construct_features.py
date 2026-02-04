@@ -298,6 +298,3 @@ if __name__ == "__main__":
             group_id, group_vegetables = line.strip().split(":")
             vegetable_groups[group_id] = group_vegetables.split(",")
             vegetables.update(vegetable_groups[group_id])
-
-    print(animals)
-    print(vegetables)
