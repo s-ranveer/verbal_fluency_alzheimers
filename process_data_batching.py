@@ -1,5 +1,6 @@
 # This is the file for processing the data regarding Alzheimer's speech dataset
 import json
+import os
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from pathlib import Path
@@ -11,13 +12,19 @@ class Pause(BaseModel):
     start: str
     end: str
 
+class Timestamp(BaseModel):
+    start: str
+    end: str
+
 class Response(BaseModel):
-    response: str
-    response_timestamp: Dict[str, str]  # {"start": "timestamp", "end": "timestamp"}
+    full_response: str
+    response_timestamps: List[Timestamp]  # {"start": "timestamp", "end": "timestamp"}
+    extracted_answer: List[str] # List of words from the response
     pauses: List[Pause]
 
 class OutputSchema(BaseModel):
     responses: Dict[str, Optional[Response]]
+
 
 def load_transcripts(transcript_dir: str) -> List[tuple[str, str]]:
     """Load all transcript files from directory.
@@ -57,8 +64,10 @@ def create_prompts(system_prompt: str, transcripts: List[tuple[str, str]], token
 if __name__ == "__main__":
     # Configuration
     BATCH_SIZE = 4  # Adjust based on your GPU memory
-    TRANSCRIPT_DIR = "/home/rxs174730/programming/speech/data/year_1/"
-    OUTPUT_DIR = "/home/rxs174730/programming/speech/outputs/"
+    TRANSCRIPT_DIR = "/home/rxs174730/programming/speech/data/transcriptions_wo_speakers/year_1"
+    OUTPUT_DIR = "/home/rxs174730/programming/speech/outputs/transcriptions_wo_speakers/year_1"
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     print("Loading system prompt for processing Alzheimer's speech dataset...")
     with open("prompts/process_data.md", "r") as file:
@@ -107,12 +116,19 @@ if __name__ == "__main__":
             print(f"Completed: {filename}")
     
     # Save results
-    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     for filename, response_text in all_results:
-        output_file = Path(OUTPUT_DIR) / f"{Path(filename).stem}_processed.json"
-        with open(output_file, "w") as f:
-            f.write(response_text)
-    
+        output_file = os.path.join(OUTPUT_DIR, f"{os.path.splitext(filename)[0]}_processed.json")
+        try:
+            json_data = json.loads(response_text)  # Assuming response_text is a JSON string
+            with open(output_file, "w") as json_file:
+                json.dump(json_data, json_file, indent=4)
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON for file {filename}: {e}")
+            print("Saving raw response text instead.")
+            with open(output_file, "w") as json_file:
+                json_file.write(response_text)
+
     print(f"\nProcessed {len(all_results)} transcripts successfully!")
     print(f"Results saved to: {OUTPUT_DIR}")
     

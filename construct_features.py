@@ -5,7 +5,10 @@ import wordfreq
 import nltk
 import pronouncing
 
-def word_frequency(response: str, aggregate: str="mean") -> float:
+nltk.download('wordnet')
+nltk.download("punkt")
+
+def word_frequency(response: list, aggregate: str="mean") -> float:
     # We would use the wordfreq library to calculate the frequency of words in the response
     """
     Calculate the average word frequency in a response.
@@ -13,7 +16,7 @@ def word_frequency(response: str, aggregate: str="mean") -> float:
     :param aggregate: Specify "mean" for average word frequency or "total" for total frequency of all words
     :return: Mean word frequency or total frequency of all words
     """
-    words = response.strip().split(",")
+    words = [r.strip().lower() for r in response]
     words = list(set(words))  # Consider unique words only
     frequencies = [wordfreq.word_frequency(word, "en") for word in words]
     if aggregate == "total":
@@ -23,13 +26,13 @@ def word_frequency(response: str, aggregate: str="mean") -> float:
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def word_length(response: str, aggregate: str="mean") -> float:
+def word_length(response: list, aggregate: str="mean") -> float:
     """Calculate the length of an average word in a response.
     :param response: The processed response string
     :param aggregate: Specify "mean" for average word length or "total" for total length of all words
     :return: Mean word length or total length of all words
     """
-    words = response.strip().split(",")
+    words = [r.strip().lower() for r in response]
     words = list(set(words))  # Consider unique words only
     lengths = [len(word) for word in words]
     if aggregate == "mean":
@@ -39,14 +42,14 @@ def word_length(response: str, aggregate: str="mean") -> float:
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def age_of_acquisition(response: str, aoa_path: str, aggregate: str="mean") -> float:
+def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean") -> float:
     """Calculate the average age of acquisition of words in a response.
     :param response: The processed response string
     :param aoa_path: Path to the age of acquisition data file
     :param aggregate: Specify "mean" for average AoA or "total" for total AoA of all words
     :return: Mean AoA or total AoA of all words
     """
-    words = response.strip().split(",")
+    words = [r.strip().lower() for r in response]
     words = list(set(words))  # Consider unique words only
     # Use nltk to lemmatize words
     lemmatizer = nltk.WordNetLemmatizer()
@@ -95,8 +98,8 @@ def age_of_acquisition(response: str, aoa_path: str, aggregate: str="mean") -> f
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def neigborhood_density(response: str, clustering_type: str="semantic", **kwargs) -> dict:
-    words = response.strip().lower().split(",")
+def neigborhood_density(response: list, clustering_type: str="semantic", **kwargs) -> dict:
+    words = [r.strip().lower() for r in response]
     if clustering_type == "semantic":
         # We would consider the list of words generated from the response and create clusters on consecutive words based on
         # whether they 
@@ -127,12 +130,12 @@ def neigborhood_density(response: str, clustering_type: str="semantic", **kwargs
         # they belong to the same cluster
         
         # Assign groups based on first two letters
-        group_words = {}
+        group_dict = {}
         for word in words:
             first_two = f"FT_{word[:2]}"
-            if first_two not in group_words:
-                group_words[first_two] = []
-            group_words[first_two].append(word)
+            if first_two not in group_dict:
+                group_dict[first_two] = []
+            group_dict[first_two].append(word)
 
         # Assign groups based on pronounciation feature
         for w1 in words:
@@ -145,16 +148,16 @@ def neigborhood_density(response: str, clustering_type: str="semantic", **kwargs
                 # Check for vowel sound difference, rhyme, or homonymy
                 if (pronouncing.rhymes(w1) and w2 in pronouncing.rhymes(w1)):
                     group_id = f"RHYME_{w1}"
-                    if group_id not in group_words:
-                        group_words[group_id] = [w1]
-                    group_words[group_id].append(w2)
+                    if group_id not in group_dict:
+                        group_dict[group_id] = [w1]
+                    group_dict[group_id].append(w2)
                 
                 # Check if the words are homonyms
                 elif phones_w1 and set(phones_w1) == set(phones_w2):
                     group_id = f"HOMONYM_{str(set(phones_w1))}"
-                    if group_id not in group_words:
-                        group_words[group_id] = [w1]
-                    group_words[group_id].append(w2)
+                    if group_id not in group_dict:
+                        group_dict[group_id] = [w1]
+                    group_dict[group_id].append(w2)
                 
                 else:
                     # Check for the vowel sound difference. If the words differ by only one vowel sound and everything else is the same
@@ -182,13 +185,20 @@ def neigborhood_density(response: str, clustering_type: str="semantic", **kwargs
                                         if is_vowel_diff:
                                             # The group id would be based on everything other than the differing vowel sound
                                             group_id = f"VOWEL_DIFF_{w1}"
-                                            if group_id not in group_words:
-                                                group_words[group_id] = [w1]
-                                            group_words[group_id].append(w2)
+                                            if group_id not in group_dict:
+                                                group_dict[group_id] = [w1]
+                                            group_dict[group_id].append(w2)
                                             break
                     else:
                         continue
-
+        
+        # We would assign each word to all the possible groups it belongs to 
+        word_groups = {}
+        for word in words:
+            word_groups[word] = []
+            for group_id, group_words in group_dict.items():
+                if word in group_words:
+                    word_groups[word].append(group_id)
     else:
         raise NotImplementedError(f"Clustering type {clustering_type} not implemented. Use 'semantic' or 'phonetic'.")
     
@@ -246,7 +256,7 @@ def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean")
     """
     # The pauses are a list of dictionaries with pause start and end times
     for pause in pauses:
-        pause_duration = pause["end_time"] - pause["start_time"]
+        pause_duration = float(pause["end"]) - float(pause["start"])
         pause["duration"] = pause_duration
     significant_pauses = [pause["duration"] for pause in pauses if pause["duration"] >= pause_threshold_in_seconds]
     if not significant_pauses:
@@ -258,26 +268,64 @@ def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean")
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def speech_rate(response_segments, time_segments) -> float:
+def speech_rate(raw_response, time_segments) -> float:
     """
     Calculate speech rate as words per second.
-    :param response_segments: The list of response segments for the patient
+    :param raw_response: The raw response text from which we can calculate the total number of words spoken
     :param time_segments: The list of time segments corresponding to the responses
     :return: The speech rate in words per second
     """
-    for segment in response_segments:
-        segment_words = segment["response"].strip().split(",")
-        segment["word_count"] = len(segment_words)
-    total_words = sum(segment["word_count"] for segment in response_segments)
-    total_time = sum(segment["end_time"] - segment["start_time"] for segment in time_segments)
+    words = nltk.word_tokenize(raw_response)
+    words = [word for word in words if word.isalnum()]  # Consider only alphanumeric tokens as words
+    total_words = len(words)
+
+    total_time = sum(float(segment["end"]) - float(segment["start"]) for segment in time_segments)
     if total_time == 0:
         return 0.0
     return total_words / total_time
 
+def process_data(response_data: dict, aoa_path: str, clustering_data: dict) -> dict:
+    """
+    Process the response data to extract features.
+    :param response_data: The processed response data for a patient
+    :param aoa_path: Path to the age of acquisition data file
+    :param clustering_data: The data required for clustering (e.g., animal and vegetable groups)
+    :return: A dictionary containing the extracted features
+    """
+    # The dictionary has keys, R1, R2, r3 and 4r4 corresponding to letter f ,letter L, Animals and vegetables respectively
+    features = {}
+
+    # Process for R1 and R2 which are letter f and letter L respectively
+    for response_key in ["R1", "R2"]:
+        if response_key in response_data and response_data[response_key]:
+            features[f"{response_key}_word_frequency_mean"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean")
+            features[f"{response_key}_word_length_mean"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean")
+            features[f"{response_key}_age_of_acquisition_mean"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean")
+            cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="phonetic")
+            features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
+            features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
+            features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
+            features[f"{response_key}_pause_rate_mean"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
+            features[f"{response_key}_speech_rate"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
+    
+    for response_key in ["R3", "R4"]:
+        if response_key in response_data and response_data[response_key]:
+            features[f"{response_key}_word_frequency_mean"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean")
+            features[f"{response_key}_word_length_mean"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean")
+            features[f"{response_key}_age_of_acquisition_mean"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean")
+            cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="semantic", **clustering_data)
+            features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
+            features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
+            features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
+            features[f"{response_key}_pause_rate_mean"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
+            features[f"{response_key}_speech_rate"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
+    
+    return features
+
 if __name__ == "__main__":
     # Load the sample file
     print("Loading processed response data...")
-    with open("sample.json", "r") as file:
+    with open("/home/rxs174730/programming/speech/processed_response.json", "r") as file:
         data = json.load(file)
     
     # Loading the clustering data
@@ -298,3 +346,7 @@ if __name__ == "__main__":
             group_id, group_vegetables = line.strip().split(":")
             vegetable_groups[group_id] = group_vegetables.split(",")
             vegetables.update(vegetable_groups[group_id])
+    
+    process_data(data["responses"], "data/age_of_acquisition.xlsx", {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups})
+    
+    

@@ -11,9 +11,14 @@ class Pause(BaseModel):
     start: str
     end: str
 
+class Timestamp(BaseModel):
+    start: str
+    end: str
+
 class Response(BaseModel):
-    response: str
-    response_timestamp: Dict[str, str]  # {"start": "timestamp", "end": "timestamp"}
+    full_response: str
+    response_timestamps: List[Timestamp]  # {"start": "timestamp", "end": "timestamp"}
+    extracted_answer: List[str] # List of words from the response
     pauses: List[Pause]
 
 class OutputSchema(BaseModel):
@@ -27,7 +32,7 @@ if __name__ == "__main__":
         system_prompt = file.read()
     
     print("Loading the transcript...")
-    with open("/home/rxs174730/programming/speech/data/year_1/RWRAD_001CogTest.txt", "r") as file:
+    with open("/home/rxs174730/programming/speech/data/transcriptions_wo_speakers/year_1/RWRAD_001CogTest_whisperx.txt", "r") as file:
         transcript = file.read()
     
     print("Creating the user prompt...")
@@ -60,6 +65,10 @@ if __name__ == "__main__":
     response_text = outputs[0].outputs[0].text
     
     print(response_text)
+
+    # Save the response to a JSON file
+    with open("processed_response.json", "w") as json_file:
+        json.dump(response_text, json_file, indent=4)
     
     # Shutdown vllm
     del llm
