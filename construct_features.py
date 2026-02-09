@@ -1,24 +1,26 @@
 # This is the file for constructing the features for the Alzheimer's speech dataset
 import json
 import os
+import re
 import pandas as pd
 import wordfreq
 import nltk
 import pronouncing
+from tqdm import tqdm
 
 
 input_dir = "/home/rxs174730/programming/speech/outputs/transcriptions_wo_speakers/year_1"
 aoa_path = "data/age_of_acquisition.xlsx"
 output_path = "/home/rxs174730/programming/speech/outputs/features_year_1.csv"
 
-def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs) -> float:
+def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs):
     # We would use the wordfreq library to calculate the frequency of words in the response
     """
     Calculate the average word frequency in a response.
     :param response: The processed response string
     :param aggregate: Specify "mean" for average word frequency or "total" for total frequency of all words
     :param letter: If the letter is provided, only use words which begin with it
-    :return: Mean word frequency or total frequency of all words
+    :return: Mean word frequency or total frequency of all words as wella s the total number of words considered for the calculation
     """
     words = [r.strip().lower() for r in response]
     if letter is not None:
@@ -29,18 +31,18 @@ def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_
     words = list(set(words))  # Consider unique words only
     frequencies = [wordfreq.word_frequency(word, "en") for word in words]
     if aggregate == "total":
-        return sum(frequencies)
+        return sum(frequencies), len(frequencies)
     elif aggregate == "mean":
-        return sum(frequencies) / len(frequencies) if len(frequencies) > 0 else 0.0
+        return sum(frequencies) / len(frequencies) if len(frequencies) > 0 else 0.0, len(frequencies)
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def word_length(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs) -> float:
+def word_length(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs):
     """Calculate the length of an average word in a response.
     :param response: The processed response string
     :param aggregate: Specify "mean" for average word length or "total" for total length of all words
     :param letter: If the letter is provided, only use words which begin with it
-    :return: Mean word length or total length of all words
+    :return: Mean word length or total length of all words as well as the total number of words considered for the calculation
     """
     words = [r.strip().lower() for r in response]
     if letter is not None:
@@ -51,19 +53,19 @@ def word_length(response: list, aggregate: str="mean", letter=None, semantic_cat
     words = list(set(words))  # Consider unique words only
     lengths = [len(word) for word in words]
     if aggregate == "mean":
-        return sum(lengths) / len(lengths) if lengths else 0.0
+        return sum(lengths) / len(lengths) if lengths else 0.0, len(lengths)
     elif aggregate == "total":
-        return sum(lengths)
+        return sum(lengths), len(lengths)
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean", letter = None, semantic_category=None, **kwargs) -> float:
+def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean", letter = None, semantic_category=None, **kwargs):
     """Calculate the average age of acquisition of words in a response.
     :param response: The processed response string
     :param aoa_path: Path to the age of acquisition data file
     :param aggregate: Specify "mean" for average AoA or "total" for total AoA of all words
     :param letter: If the letter is provided, only use words which begin with it
-    :return: Mean AoA or total AoA of all words
+    :return: Mean AoA or total AoA of all words as well as the total number of words considered for the calculation
     """
     words = [r.strip().lower() for r in response]
     words = [w.replace("_", " ") for w in words]  # Replace underscores with spaces if present
@@ -112,11 +114,11 @@ def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean", let
     # Now calculate the aggregate AoA
     aoa_values = [aoa for aoa in word_aoa.values() if aoa is not None]
     if not aoa_values:
-        return 0.0
+        return 0.0, 0
     if aggregate == "mean":
-        return sum(aoa_values) / len(aoa_values)
+        return float(sum(aoa_values) / len(aoa_values)), len(aoa_values)
     elif aggregate == "total":
-        return sum(aoa_values)
+        return float(sum(aoa_values)), len(aoa_values)
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
@@ -285,7 +287,7 @@ def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean")
     :param pauses: List of pauses with their start and end times.
     :param pause_threshold_in_seconds: Threshold to consider a pause significant. Pauses lower than the thtshold are ignored.
     :param aggregate: Description of the aggregate method to use ("mean" or "total")
-    :return: The calculated pause feature based on the specified aggregate method.
+    :return: The calculated pause feature based on the specified aggregate method as well as the total number of significant pauses considered for the calculation
     """
     # The pauses are a list of dictionaries with pause start and end times
     for pause in pauses:
@@ -293,11 +295,11 @@ def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean")
         pause["duration"] = pause_duration
     significant_pauses = [pause["duration"] for pause in pauses if pause["duration"] >= pause_threshold_in_seconds]
     if not significant_pauses:
-        return 0.0
+        return 0.0, 0
     if aggregate == "mean":
-        return sum(significant_pauses) / len(significant_pauses)
+        return sum(significant_pauses) / len(significant_pauses), len(significant_pauses)
     elif aggregate == "total":
-        return sum(significant_pauses)
+        return sum(significant_pauses), len(significant_pauses)
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
@@ -306,7 +308,7 @@ def speech_rate(raw_response, time_segments) -> float:
     Calculate speech rate as words per second.
     :param raw_response: The raw response text from which we can calculate the total number of words spoken
     :param time_segments: The list of time segments corresponding to the responses
-    :return: The speech rate in words per second
+    :return: The speech rate in words per second as well as the total number of words considered for the calculation
     """
     words = nltk.word_tokenize(raw_response)
     words = [word for word in words if word.isalnum()]  # Consider only alphanumeric tokens as words
@@ -314,8 +316,8 @@ def speech_rate(raw_response, time_segments) -> float:
 
     total_time = sum(float(segment["end"]) - float(segment["start"]) for segment in time_segments)
     if total_time == 0:
-        return 0.0
-    return total_words / total_time
+        return 0.0, 0
+    return total_words / total_time, total_words
 
 def process_data(response_data: dict, aoa_path: str, clustering_data: dict) -> dict:
     """
@@ -335,32 +337,52 @@ def process_data(response_data: dict, aoa_path: str, clustering_data: dict) -> d
                 letter = "f"
             else:
                 letter = "l"
-            features[f"{response_key}_word_frequency_mean"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
-            features[f"{response_key}_word_length_mean"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
-            features[f"{response_key}_age_of_acquisition_mean"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean", letter=letter)
+            features[f"{response_key}_word_frequency_mean"], features[f"{response_key}_word_frequency_total_words"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
+            features[f"{response_key}_word_length_mean"], features[f"{response_key}_word_length_total_words"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
+            features[f"{response_key}_age_of_acquisition_mean"], features[f"{response_key}_age_of_acquisition_total_words"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean", letter=letter)
             cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="phonetic", letter=letter)
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
             features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
-            features[f"{response_key}_pause_rate_mean"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
-            features[f"{response_key}_speech_rate"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
-    
+            features[f"{response_key}_pause_rate_mean"], features[f"{response_key}_pause_rate_total_pauses"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
+            features[f"{response_key}_speech_rate"], features[f"{response_key}_speech_rate_total_words"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
+        
     for response_key in ["R3", "R4"]:
         if response_key == "R3":
             semantic_category = "animal"
         else:
             semantic_category = "vegetable"
         if response_key in response_data and response_data[response_key]:
-            features[f"{response_key}_word_frequency_mean"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
-            features[f"{response_key}_word_length_mean"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
-            features[f"{response_key}_age_of_acquisition_mean"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean", semantic_category=semantic_category, **clustering_data)
+            features[f"{response_key}_word_frequency_mean"], features[f"{response_key}_word_frequency_total_words"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
+            features[f"{response_key}_word_length_mean"], features[f"{response_key}_word_length_total_words"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
+            features[f"{response_key}_age_of_acquisition_mean"], features[f"{response_key}_age_of_acquisition_total_words"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean", semantic_category=semantic_category, **clustering_data)
             cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="semantic", semantic_category = semantic_category, **clustering_data)
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
             features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
-            features[f"{response_key}_pause_rate_mean"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
-            features[f"{response_key}_speech_rate"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
+            features[f"{response_key}_pause_rate_mean"], features[f"{response_key}_pause_rate_total_pauses"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
+            features[f"{response_key}_speech_rate"], features[f"{response_key}_speech_rate_total_words"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
     
+    for feature_type, q1, q2 in [("phonetic", "R1", "R2"), ("semantic", "R3", "R4")]:
+        # Get the overall number of switches
+        features[f"{feature_type}_num_switches"] = features.get(f"{q1}_num_switches", 0) + features.get(f"{q2}_num_switches", 0)
+
+        # Get the overall phonetic or semantic  specific average cluster size.
+        if all(key in features for key in [f"{q1}_avg_cluster_size", f"{q2}_avg_cluster_size"]):
+            features[f"{feature_type}_avg_cluster_size"] = (features[f"{q1}_avg_cluster_size"]*(features[f"{q1}_num_switches"]+1) + features[f"{q2}_avg_cluster_size"]*(features[f"{q2}_num_switches"]+1)) / (features[f"{q1}_num_switches"] + features[f"{q2}_num_switches"] + 2)
+        elif f"{q1}_avg_cluster_size" in features and f"{q1}_num_switches" in features:
+            features[f"{feature_type}_avg_cluster_size"] = features[f"{q1}_avg_cluster_size"]
+        elif f"{q2}_avg_cluster_size" in features and f"{q2}_num_switches" in features:
+            features[f"{feature_type}_avg_cluster_size"] = features[f"{q2}_avg_cluster_size"]
+        else:
+            features[f"{feature_type}_avg_cluster_size"] = 0.0
+        
+        for metric in ["word_frequency_mean", "word_length_mean", "age_of_acquisition_mean", "pause_rate_mean", "speech_rate"]:
+            features[f"{feature_type}_{metric}"] = features.get(f"{q1}_{metric}", 0.0) * features.get(f"{q1}_{metric.replace('mean', 'total_words')}", 0) + features.get(f"{q2}_{metric}", 0.0) * features.get(f"{q2}_{metric.replace('mean', 'total_words')}", 0)
+            features[f"{feature_type}_{metric.replace('mean', 'total_words')}"] = features.get(f"{q1}_{metric.replace('mean', 'total_words')}", 0) + features.get(f"{q2}_{metric.replace('mean', 'total_words')}", 0)
+            if features[f"{feature_type}_{metric.replace('mean', 'total_words')}"] > 0:
+                features[f"{feature_type}_{metric}"] /= features[f"{feature_type}_{metric.replace('mean', 'total_words')}"]
+
     return {k: [float(v)] for k, v in features.items()}
 
 if __name__ == "__main__":
@@ -394,15 +416,18 @@ if __name__ == "__main__":
 
     # Loading the response data from the input folder
     features_df = None
-    for file in os.listdir(input_dir):
+    total_files = len([file for file in os.listdir(input_dir) if file.endswith(".json")])
+    for file in tqdm(os.listdir(input_dir), total=total_files):
         if file.endswith(".json"):
+            p_id = re.match(r"RWRAD_(\d+).*", file).group(1)
             with open(os.path.join(input_dir, file), "r") as f:
                 try:
                     data = json.load(f)
                 except json.JSONDecodeError:
                     print(f"Error decoding JSON in file: {file}. Skipping this file.")
                     continue
-            features = process_data(data["responses"], aoa_path, {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups, "animal": animals, "vegetable": vegetables})
+            features = process_data(data["responses"], aoa_path, {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups, "animal": animals, "vegetable": vegetables}, p_id=p_id)
+            features["patient_id"] = p_id
             if features_df is None:
                 features_df = pd.DataFrame(features)
             else:
@@ -410,5 +435,6 @@ if __name__ == "__main__":
     
     # Save the features to a csv file
     if isinstance(features_df, pd.DataFrame):
+        features_df = features_df[["patient_id"] + sorted([col for col in features_df.columns if col != "patient_id"])]
         features_df.to_csv(output_path, index=False)
     
