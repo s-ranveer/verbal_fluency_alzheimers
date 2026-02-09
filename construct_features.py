@@ -96,7 +96,10 @@ def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean", let
                     # We would assign the AoA as None if not found
                     word_aoa[word] = None
                 else:
-                    word_aoa[word] = row["AoA_Kup_lem"].values[0]
+                    if not row["AoA_Kup_lem"].isnull().values[0]:
+                        word_aoa[word] = row["AoA_Kup_lem"].values[0]
+                    else:
+                        word_aoa[word] = None
             else:
                 if not row["AoA_Kup"].isnull().values[0]:
                     word_aoa[word] = row["AoA_Kup"].values[0]
