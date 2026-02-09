@@ -284,7 +284,7 @@ def neigborhood_density(response: list, clustering_type: str="semantic", letter=
     avg_cluster_size = sum(len(cluster)-1 for cluster in clusters.values()) / len(clusters) if clusters else 0.0
     return {"num_switches": num_switches, "avg_cluster_size": avg_cluster_size, "total_words": len(set(words))}
 
-def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean") -> float:
+def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean"):
     """
     Calculate pause features from the list of pauses.
     :param pauses: List of pauses with their start and end times.
@@ -306,7 +306,7 @@ def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean")
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def speech_rate(raw_response, time_segments) -> float:
+def speech_rate(raw_response, time_segments):
     """
     Calculate speech rate as words per second.
     :param raw_response: The raw response text from which we can calculate the total number of words spoken
@@ -422,14 +422,18 @@ if __name__ == "__main__":
     total_files = len([file for file in os.listdir(input_dir) if file.endswith(".json")])
     for file in tqdm(os.listdir(input_dir), total=total_files):
         if file.endswith(".json"):
-            p_id = re.match(r"RWRAD_(\d+).*", file).group(1)
+            match = re.match(r"RWRAD_(\d+).*", file)
+            if match is not None:
+                p_id = match.group(1)
+            else:
+                continue
             with open(os.path.join(input_dir, file), "r") as f:
                 try:
                     data = json.load(f)
                 except json.JSONDecodeError:
                     print(f"Error decoding JSON in file: {file}. Skipping this file.")
                     continue
-            features = process_data(data["responses"], aoa_path, {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups, "animal": animals, "vegetable": vegetables}, p_id=p_id)
+            features = process_data(data["responses"], aoa_path, {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups, "animal": animals, "vegetable": vegetables})
             features["patient_id"] = p_id
             if features_df is None:
                 features_df = pd.DataFrame(features)
