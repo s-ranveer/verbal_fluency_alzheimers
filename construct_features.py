@@ -1,22 +1,31 @@
 # This is the file for constructing the features for the Alzheimer's speech dataset
 import json
+import os
 import pandas as pd
 import wordfreq
 import nltk
 import pronouncing
 
-nltk.download('wordnet')
-nltk.download("punkt")
 
-def word_frequency(response: list, aggregate: str="mean") -> float:
+input_dir = "/home/rxs174730/programming/speech/outputs/transcriptions_wo_speakers/year_1"
+aoa_path = "data/age_of_acquisition.xlsx"
+output_path = "/home/rxs174730/programming/speech/outputs/features_year_1.csv"
+
+def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs) -> float:
     # We would use the wordfreq library to calculate the frequency of words in the response
     """
     Calculate the average word frequency in a response.
     :param response: The processed response string
     :param aggregate: Specify "mean" for average word frequency or "total" for total frequency of all words
+    :param letter: If the letter is provided, only use words which begin with it
     :return: Mean word frequency or total frequency of all words
     """
     words = [r.strip().lower() for r in response]
+    if letter is not None:
+        words = [w for w in words if w.startswith(letter)]
+    if semantic_category is not None and semantic_category in kwargs:
+        category_words = kwargs[semantic_category]
+        words = [w for w in words if w in category_words]
     words = list(set(words))  # Consider unique words only
     frequencies = [wordfreq.word_frequency(word, "en") for word in words]
     if aggregate == "total":
@@ -26,13 +35,19 @@ def word_frequency(response: list, aggregate: str="mean") -> float:
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def word_length(response: list, aggregate: str="mean") -> float:
+def word_length(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs) -> float:
     """Calculate the length of an average word in a response.
     :param response: The processed response string
     :param aggregate: Specify "mean" for average word length or "total" for total length of all words
+    :param letter: If the letter is provided, only use words which begin with it
     :return: Mean word length or total length of all words
     """
     words = [r.strip().lower() for r in response]
+    if letter is not None:
+        words = [w for w in words if w.startswith(letter)]
+    if semantic_category is not None and semantic_category in kwargs:
+        category_words = kwargs[semantic_category]
+        words = [w for w in words if w in category_words]
     words = list(set(words))  # Consider unique words only
     lengths = [len(word) for word in words]
     if aggregate == "mean":
@@ -42,14 +57,21 @@ def word_length(response: list, aggregate: str="mean") -> float:
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean") -> float:
+def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean", letter = None, semantic_category=None, **kwargs) -> float:
     """Calculate the average age of acquisition of words in a response.
     :param response: The processed response string
     :param aoa_path: Path to the age of acquisition data file
     :param aggregate: Specify "mean" for average AoA or "total" for total AoA of all words
+    :param letter: If the letter is provided, only use words which begin with it
     :return: Mean AoA or total AoA of all words
     """
     words = [r.strip().lower() for r in response]
+    words = [w.replace("_", " ") for w in words]  # Replace underscores with spaces if present
+    if letter is not None:
+        words = [w for w in words if w.startswith(letter)]
+    if semantic_category is not None and semantic_category in kwargs:
+        category_words = kwargs[semantic_category]
+        words = [w for w in words if w in category_words]
     words = list(set(words))  # Consider unique words only
     # Use nltk to lemmatize words
     lemmatizer = nltk.WordNetLemmatizer()
@@ -98,24 +120,35 @@ def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean") -> 
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def neigborhood_density(response: list, clustering_type: str="semantic", **kwargs) -> dict:
+def neigborhood_density(response: list, clustering_type: str="semantic", letter=None, semantic_category=None, **kwargs) -> dict:
+    """
+    Docstring for neigborhood_density
+    
+    :param response: The response to the question
+    :type response: list
+    :param clustering_type: The type of clustering, Phonetic and Semantic to perform
+    :type clustering_type: str
+    :param letter: The letter to filter the words list if provided
+    :param kwargs: Additional arguments
+    :return: Return the number of switches, average cluster size and total number of words
+    :rtype: dict[Any, Any]
+    """
+    wordnet_lemmatizer = nltk.WordNetLemmatizer()
     words = [r.strip().lower() for r in response]
+    words = [w.replace("_", " ") for w in words]  # Replace underscores with spaces if present
+    if letter is not None:
+        words = [w for w in words if w.startswith(letter)]
+    if semantic_category is not None and semantic_category in kwargs:
+        words = [wordnet_lemmatizer.lemmatize(w) for w in words]  # Lemmatize words for better matching with category words
+        category_words = kwargs[semantic_category]
+        words = [w for w in words if w in category_words]
     if clustering_type == "semantic":
         # We would consider the list of words generated from the response and create clusters on consecutive words based on
         # whether they 
-        if kwargs and kwargs["animals"] and kwargs["vegetables"]:
-            # Is the list of words provided animals or vegetables (Word list should only contain one of these)
-            for word in words:
-                if word in kwargs["animals"]:
-                    current_cluster = "animal"
-                    break
-                elif word in kwargs["vegetables"]:
-                    current_cluster = "vegetable"
-                    break
-                else:
-                    continue
+        assert semantic_category in ["animal", "vegetable"], "Semantic category should be either 'animal' or 'vegetable'"
+        if kwargs and f"{semantic_category}_groups" in kwargs:
             # Once we have the current cluster
-            group_dict = kwargs[f"{current_cluster}_groups"]
+            group_dict = kwargs[f"{semantic_category}_groups"]
             # We would assign each word to all the possible groups it belongs to 
             word_groups = {}
             for word in words:
@@ -231,7 +264,7 @@ def neigborhood_density(response: list, clustering_type: str="semantic", **kwarg
                 # If we need to create a new cluster, we would need to determine which words would also belong to this new cluster
                 for word_in_cluster in sorted(clusters[current_cluster_id-1], reverse=True):
                     if set(word_groups[word_in_cluster]).intersection(set(word_groups[word])):
-                        clusters[current_cluster_id].append(word_in_cluster)
+                        clusters[current_cluster_id].insert(0, word_in_cluster)  # Add the word to the new cluster in the front
                     else:
                         break
             else:
@@ -298,10 +331,14 @@ def process_data(response_data: dict, aoa_path: str, clustering_data: dict) -> d
     # Process for R1 and R2 which are letter f and letter L respectively
     for response_key in ["R1", "R2"]:
         if response_key in response_data and response_data[response_key]:
-            features[f"{response_key}_word_frequency_mean"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean")
-            features[f"{response_key}_word_length_mean"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean")
-            features[f"{response_key}_age_of_acquisition_mean"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean")
-            cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="phonetic")
+            if response_key == "R1":
+                letter = "f"
+            else:
+                letter = "l"
+            features[f"{response_key}_word_frequency_mean"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
+            features[f"{response_key}_word_length_mean"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
+            features[f"{response_key}_age_of_acquisition_mean"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean", letter=letter)
+            cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="phonetic", letter=letter)
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
             features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
@@ -309,25 +346,30 @@ def process_data(response_data: dict, aoa_path: str, clustering_data: dict) -> d
             features[f"{response_key}_speech_rate"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
     
     for response_key in ["R3", "R4"]:
+        if response_key == "R3":
+            semantic_category = "animal"
+        else:
+            semantic_category = "vegetable"
         if response_key in response_data and response_data[response_key]:
-            features[f"{response_key}_word_frequency_mean"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean")
-            features[f"{response_key}_word_length_mean"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean")
-            features[f"{response_key}_age_of_acquisition_mean"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean")
-            cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="semantic", **clustering_data)
+            features[f"{response_key}_word_frequency_mean"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
+            features[f"{response_key}_word_length_mean"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
+            features[f"{response_key}_age_of_acquisition_mean"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean", semantic_category=semantic_category, **clustering_data)
+            cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="semantic", semantic_category = semantic_category, **clustering_data)
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
             features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
             features[f"{response_key}_pause_rate_mean"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
             features[f"{response_key}_speech_rate"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
     
-    return features
+    return {k: [float(v)] for k, v in features.items()}
 
 if __name__ == "__main__":
-    # Load the sample file
-    print("Loading processed response data...")
-    with open("/home/rxs174730/programming/speech/processed_response.json", "r") as file:
-        data = json.load(file)
-    
+    # Load the wordnet lemmatizer for use in the neighborhood density function
+    # Loading the clustering data
+    nltk.download('wordnet')
+    nltk.download("punkt")
+    wordnet_lemmatizer = nltk.WordNetLemmatizer()
+
     # Loading the clustering data
     with open("data/animal_groups.txt", "r") as file:
         ac = file.readlines()
@@ -336,6 +378,7 @@ if __name__ == "__main__":
         for line in ac:
             group_id, group_animals = line.strip().split(":")
             animal_groups[group_id] = group_animals.split(",")
+            animal_groups[group_id] = [wordnet_lemmatizer.lemmatize(animal.strip().replace("_", " ")) for animal in animal_groups[group_id]]
             animals.update(animal_groups[group_id])
             
     with open("data/vegetable_groups.txt", "r") as file:
@@ -345,8 +388,27 @@ if __name__ == "__main__":
         for line in vc:
             group_id, group_vegetables = line.strip().split(":")
             vegetable_groups[group_id] = group_vegetables.split(",")
+            vegetable_groups[group_id] = [wordnet_lemmatizer.lemmatize(veg.strip().replace("_", " ")) for veg in vegetable_groups[group_id]]
             vegetables.update(vegetable_groups[group_id])
     
-    process_data(data["responses"], "data/age_of_acquisition.xlsx", {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups})
+
+    # Loading the response data from the input folder
+    features_df = None
+    for file in os.listdir(input_dir):
+        if file.endswith(".json"):
+            with open(os.path.join(input_dir, file), "r") as f:
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError:
+                    print(f"Error decoding JSON in file: {file}. Skipping this file.")
+                    continue
+            features = process_data(data["responses"], aoa_path, {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups, "animal": animals, "vegetable": vegetables})
+            if features_df is None:
+                features_df = pd.DataFrame(features)
+            else:
+                features_df = pd.concat([features_df, pd.DataFrame(features)], ignore_index=True)
     
+    # Save the features to a csv file
+    if isinstance(features_df, pd.DataFrame):
+        features_df.to_csv(output_path, index=False)
     
