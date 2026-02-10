@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 input_dir = "/home/rxs174730/programming/speech/outputs/transcriptions_wo_speakers/year_1"
 aoa_path = "data/age_of_acquisition.xlsx"
+aoa_sec_path = "data/age_of_acquisition_secondary.xlsx"
 output_path = "/home/rxs174730/programming/speech/outputs/features_year_1.csv"
 
 def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs):
@@ -59,10 +60,36 @@ def word_length(response: list, aggregate: str="mean", letter=None, semantic_cat
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
-def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean", letter = None, semantic_category=None, **kwargs):
+def age_of_acquisition_secondary(word, aoa_sec_df):
+    # We would try to get the row where the word or its lemma match the "WORD" column in the secondary AoA data file and get the "AoA" value from that row
+    row = aoa_sec_df[aoa_sec_df["WORD"].str.lower() == word.lower()]
+    if row.empty:
+        # Try lemmatized version of the word
+        lemmatizer = nltk.WordNetLemmatizer()
+        lemma = lemmatizer.lemmatize(word)
+        row = aoa_sec_df[aoa_sec_df["WORD"].str.lower() == lemma.lower()]
+        if row.empty:
+            return None
+        else:
+            AOA_values = row["AoAtestbased"].values
+            if len(AOA_values) > 0:
+                # Return the smallest AoA value if there are multiple entries for the same word
+                return min(AOA_values) if not pd.isnull(AOA_values).all() else None
+            else:
+                return None
+    else:
+        AOA_values = row["AoAtestbased"].values
+        if len(AOA_values) > 0:
+            # Return the smallest AoA value if there are multiple entries for the same word
+            return min(AOA_values) if not pd.isnull(AOA_values).all() else None
+        else:
+            return None
+
+def age_of_acquisition(response: list, aoa_path: str, aoa_sec_path, aggregate: str="mean", letter = None, semantic_category=None, **kwargs):
     """Calculate the average age of acquisition of words in a response.
     :param response: The processed response string
     :param aoa_path: Path to the age of acquisition data file
+    :param aoa_sec_path: Path to the secondary age of acquisition data file to be used if the word is not found in the primary file
     :param aggregate: Specify "mean" for average AoA or "total" for total AoA of all words
     :param letter: If the letter is provided, only use words which begin with it
     :return: Mean AoA or total AoA of all words as well as the total number of words considered for the calculation
@@ -79,7 +106,11 @@ def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean", let
     lemmatizer = nltk.WordNetLemmatizer()
     lemmas = {word: lemmatizer.lemmatize(word) for word in words}
     # Load age of acquisition data which is an xlsx file (Sheet1)
-    aoa_data = pd.read_excel(aoa_path, sheet_name="Sheet1")
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Cannot parse header or footer")
+        aoa_data = pd.read_excel(aoa_path, sheet_name="Sheet1", header=0, skipfooter=0)
+        aoa_sec_df = pd.read_excel(aoa_sec_path, sheet_name="a", header=0, skipfooter=0)
     # We are concerned with the columns "Word", "Alternative.spelling", "Lemma_highest_PoS", "AoA_Kup", and "AoA_Kup_lem"
     word_aoa = {}
     for word, lemma in lemmas.items():
@@ -94,26 +125,26 @@ def age_of_acquisition(response: list, aoa_path: str, aggregate: str="mean", let
                 row = aoa_data[aoa_data["Lemma_highest_PoS"].str.lower() == lemma.lower()]
                 if row.empty:
                     # We would assign the AoA as None if not found
-                    word_aoa[word] = None
+                    word_aoa[word] = age_of_acquisition_secondary(word, aoa_sec_df)
                 else:
                     if not row["AoA_Kup_lem"].isnull().values[0]:
                         word_aoa[word] = row["AoA_Kup_lem"].values[0]
                     else:
-                        word_aoa[word] = None
+                        word_aoa[word] = age_of_acquisition_secondary(word, aoa_sec_df)
             else:
                 if not row["AoA_Kup"].isnull().values[0]:
                     word_aoa[word] = row["AoA_Kup"].values[0]
                 elif not row["AoA_Kup_lem"].isnull().values[0]:
                     word_aoa[word] = row["AoA_Kup_lem"].values[0]
                 else:
-                    word_aoa[word] = None
+                    word_aoa[word] = age_of_acquisition_secondary(word, aoa_sec_df)
         else:
             if not row["AoA_Kup"].isnull().values[0]:
                 word_aoa[word] = row["AoA_Kup"].values[0]
             elif not row["AoA_Kup_lem"].isnull().values[0]:
                 word_aoa[word] = row["AoA_Kup_lem"].values[0]
             else:
-                word_aoa[word] = None
+                word_aoa[word] = age_of_acquisition_secondary(word, aoa_sec_df)
     # Now calculate the aggregate AoA
     aoa_values = [aoa for aoa in word_aoa.values() if aoa is not None]
     if not aoa_values:
@@ -322,11 +353,12 @@ def speech_rate(raw_response, time_segments):
         return 0.0, 0
     return total_words / total_time, total_words
 
-def process_data(response_data: dict, aoa_path: str, clustering_data: dict) -> dict:
+def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clustering_data: dict) -> dict:
     """
     Process the response data to extract features.
     :param response_data: The processed response data for a patient
     :param aoa_path: Path to the age of acquisition data file
+    :param aoa_sec_path: Path to the secondary age of acquisition data file to be used if the word is not found in the primary file
     :param clustering_data: The data required for clustering (e.g., animal and vegetable groups)
     :return: A dictionary containing the extracted features
     """
@@ -342,7 +374,7 @@ def process_data(response_data: dict, aoa_path: str, clustering_data: dict) -> d
                 letter = "l"
             features[f"{response_key}_word_frequency_mean"], features[f"{response_key}_word_frequency_total_words"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
             features[f"{response_key}_word_length_mean"], features[f"{response_key}_word_length_total_words"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
-            features[f"{response_key}_age_of_acquisition_mean"], features[f"{response_key}_age_of_acquisition_total_words"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean", letter=letter)
+            features[f"{response_key}_age_of_acquisition_mean"], features[f"{response_key}_age_of_acquisition_total_words"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aoa_sec_path=aoa_sec_path, aggregate="mean", letter=letter)
             cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="phonetic", letter=letter)
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
@@ -358,7 +390,7 @@ def process_data(response_data: dict, aoa_path: str, clustering_data: dict) -> d
         if response_key in response_data and response_data[response_key]:
             features[f"{response_key}_word_frequency_mean"], features[f"{response_key}_word_frequency_total_words"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
             features[f"{response_key}_word_length_mean"], features[f"{response_key}_word_length_total_words"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
-            features[f"{response_key}_age_of_acquisition_mean"], features[f"{response_key}_age_of_acquisition_total_words"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aggregate="mean", semantic_category=semantic_category, **clustering_data)
+            features[f"{response_key}_age_of_acquisition_mean"], features[f"{response_key}_age_of_acquisition_total_words"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aoa_sec_path=aoa_sec_path, aggregate="mean", semantic_category=semantic_category, **clustering_data)
             cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="semantic", semantic_category = semantic_category, **clustering_data)
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
@@ -433,7 +465,7 @@ if __name__ == "__main__":
                 except json.JSONDecodeError:
                     print(f"Error decoding JSON in file: {file}. Skipping this file.")
                     continue
-            features = process_data(data["responses"], aoa_path, {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups, "animal": animals, "vegetable": vegetables})
+            features = process_data(data["responses"], aoa_path, aoa_sec_path, {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups, "animal": animals, "vegetable": vegetables})
             features["patient_id"] = p_id
             if features_df is None:
                 features_df = pd.DataFrame(features)
