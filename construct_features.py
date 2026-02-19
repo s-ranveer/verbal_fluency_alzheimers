@@ -6,6 +6,7 @@ import pandas as pd
 import wordfreq
 import nltk
 import pronouncing
+from sklearn.cluster import KMeans
 from tqdm import tqdm
 
 
@@ -13,6 +14,7 @@ input_dir = "/home/rxs174730/programming/speech/outputs/transcriptions_wo_speake
 aoa_path = "data/age_of_acquisition.xlsx"
 aoa_sec_path = "data/age_of_acquisition_secondary.xlsx"
 output_path = "/home/rxs174730/programming/speech/outputs/features_year_1.csv"
+binned_output_path = "/home/rxs174730/programming/speech/outputs/features_year_1_binned.csv"
 
 def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs):
     # We would use the wordfreq library to calculate the frequency of words in the response
@@ -476,4 +478,12 @@ if __name__ == "__main__":
     if isinstance(features_df, pd.DataFrame):
         features_df = features_df[["patient_id"] + sorted([col for col in features_df.columns if col != "patient_id"])]
         features_df.to_csv(output_path, index=False)
+    
+    # We would also discretize the dataset by binning it into three bins with increasing thresholds based on the distribution of the features in the dataset and save it as a separate csv file
+    if isinstance(features_df, pd.DataFrame):
+        binned_features_df = features_df.copy()
+        for col in binned_features_df.columns:
+            if col != "patient_id":
+                binned_features_df[col] = pd.qcut(binned_features_df[col], q=3, labels=False, duplicates="drop")
+        binned_features_df.to_csv(binned_output_path, index=False)
     

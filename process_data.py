@@ -32,7 +32,7 @@ if __name__ == "__main__":
         system_prompt = file.read()
     
     print("Loading the transcript...")
-    with open("/home/rxs174730/programming/speech/data/transcriptions_wo_speakers/year_1/RWRAD_001CogTest_whisperx.txt", "r") as file:
+    with open("/home/rxs174730/programming/speech/data/transcriptions_wo_speakers/year_3/RWRAD_009_CogTest_whisperx.txt", "r") as file:
         transcript = file.read()
     
     print("Creating the user prompt...")
@@ -67,8 +67,9 @@ if __name__ == "__main__":
     print(response_text)
 
     # Save the response to a JSON file
-    with open("processed_response.json", "w") as json_file:
-        json.dump(response_text, json_file, indent=4)
+    with open("/home/rxs174730/programming/speech/outputs/transcriptions_wo_speakers/year_3/RWRAD_009_CogTest_whisperx_processed.json", "w") as json_file:
+        json_text = json.loads(response_text)  # Convert string to JSON
+        json.dump(json_text, json_file, indent=4)
     
     # Shutdown vllm
     del llm
