@@ -353,7 +353,7 @@ def speech_rate(raw_response, time_segments):
     total_time = sum(float(segment["end"]) - float(segment["start"]) for segment in time_segments)
     if total_time == 0:
         return 0.0, 0
-    return total_words / total_time, total_words
+    return total_words / total_time, total_time
 
 def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clustering_data: dict) -> dict:
     """
@@ -381,8 +381,8 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
             features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
-            features[f"{response_key}_pause_rate_mean"], features[f"{response_key}_pause_rate_total_pauses"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
-            features[f"{response_key}_speech_rate"], features[f"{response_key}_speech_rate_total_words"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
+            features[f"{response_key}_pause_rate"], features[f"{response_key}_pause_rate_total_pauses"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
+            features[f"{response_key}_speech_rate"], features[f"{response_key}_speech_rate_total_time"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
         
     for response_key in ["R3", "R4"]:
         if response_key == "R3":
@@ -397,8 +397,8 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
             features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
-            features[f"{response_key}_pause_rate_mean"], features[f"{response_key}_pause_rate_total_pauses"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
-            features[f"{response_key}_speech_rate"], features[f"{response_key}_speech_rate_total_words"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
+            features[f"{response_key}_pause_rate"], features[f"{response_key}_pause_rate_total_pauses"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
+            features[f"{response_key}_speech_rate"], features[f"{response_key}_speech_rate_total_time"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
     
     for feature_type, q1, q2 in [("phonetic", "R1", "R2"), ("semantic", "R3", "R4")]:
         # Get the overall number of switches
@@ -414,12 +414,22 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
         else:
             features[f"{feature_type}_avg_cluster_size"] = 0.0
         
-        for metric in ["word_frequency_mean", "word_length_mean", "age_of_acquisition_mean", "pause_rate_mean", "speech_rate"]:
+        for metric in ["word_frequency_mean", "word_length_mean", "age_of_acquisition_mean"]:
             features[f"{feature_type}_{metric}"] = features.get(f"{q1}_{metric}", 0.0) * features.get(f"{q1}_{metric.replace('mean', 'total_words')}", 0) + features.get(f"{q2}_{metric}", 0.0) * features.get(f"{q2}_{metric.replace('mean', 'total_words')}", 0)
             features[f"{feature_type}_{metric.replace('mean', 'total_words')}"] = features.get(f"{q1}_{metric.replace('mean', 'total_words')}", 0) + features.get(f"{q2}_{metric.replace('mean', 'total_words')}", 0)
             if features[f"{feature_type}_{metric.replace('mean', 'total_words')}"] > 0:
                 features[f"{feature_type}_{metric}"] /= features[f"{feature_type}_{metric.replace('mean', 'total_words')}"]
 
+        features[f"{feature_type}_pause_rate"] = features.get(f"{q1}_pause_rate", 0.0) * features.get(f"{q1}_pause_rate_total_pauses", 0) + features.get(f"{q2}_pause_rate", 0.0) * features.get(f"{q2}_pause_rate_total_pauses", 0)
+        features[f"{feature_type}_pause_rate_total_pauses"] = features.get(f"{q1}_pause_rate_total_pauses", 0) + features.get(f"{q2}_pause_rate_total_pauses", 0)
+        if features[f"{feature_type}_pause_rate_total_pauses"] > 0:
+            features[f"{feature_type}_pause_rate"] /= features[f"{feature_type}_pause_rate_total_pauses"]
+        
+        features[f"{feature_type}_speech_rate"] = features.get(f"{q1}_speech_rate", 0.0) * features.get(f"{q1}_speech_rate_total_time", 0) + features.get(f"{q2}_speech_rate", 0.0) * features.get(f"{q2}_speech_rate_total_time", 0)
+        features[f"{feature_type}_speech_rate_total_time"] = features.get(f"{q1}_speech_rate_total_time", 0) + features.get(f"{q2}_speech_rate_total_time", 0)
+        if features[f"{feature_type}_speech_rate_total_time"] > 0:
+            features[f"{feature_type}_speech_rate"] /= features[f"{feature_type}_speech_rate_total_time"]
+        
     return {k: [float(v)] for k, v in features.items()}
 
 if __name__ == "__main__":
