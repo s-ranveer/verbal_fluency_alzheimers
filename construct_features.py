@@ -26,8 +26,10 @@ def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_
     :return: Mean word frequency or total frequency of all words as wella s the total number of words considered for the calculation
     """
     words = [r.strip().lower() for r in response]
+    words = [w.replace("_", " ") for w in words]  # Replace underscores with spaces if present
     if letter is not None:
         words = [w for w in words if w.startswith(letter)]
+        words = [w for w in words if wordfreq.word_frequency(w.split(" ")[0], "en") > 0]
     if semantic_category is not None and semantic_category in kwargs:
         category_words = kwargs[semantic_category]
         words = [w for w in words if w in category_words]
@@ -48,8 +50,11 @@ def word_length(response: list, aggregate: str="mean", letter=None, semantic_cat
     :return: Mean word length or total length of all words as well as the total number of words considered for the calculation
     """
     words = [r.strip().lower() for r in response]
+    words = [w.replace("_", " ") for w in words]  # Replace underscores with spaces if present
     if letter is not None:
         words = [w for w in words if w.startswith(letter)]
+        # Additionally, we would remove any words with a word frequency of 0 in the English language as they are likely to be non-words or errors in transcription
+        words = [w for w in words if wordfreq.word_frequency(w.split(" ")[0], "en") > 0]
     if semantic_category is not None and semantic_category in kwargs:
         category_words = kwargs[semantic_category]
         words = [w for w in words if w in category_words]
@@ -100,6 +105,7 @@ def age_of_acquisition(response: list, aoa_path: str, aoa_sec_path, aggregate: s
     words = [w.replace("_", " ") for w in words]  # Replace underscores with spaces if present
     if letter is not None:
         words = [w for w in words if w.startswith(letter)]
+        words = [w for w in words if wordfreq.word_frequency(w.split(" ")[0], "en") > 0]
     if semantic_category is not None and semantic_category in kwargs:
         category_words = kwargs[semantic_category]
         words = [w for w in words if w in category_words]
@@ -218,6 +224,7 @@ def neigborhood_density(response: list, clustering_type: str="semantic", letter=
     words = [w.replace("_", " ") for w in words]  # Replace underscores with spaces if present
     if letter is not None:
         words = [w for w in words if w.startswith(letter)]
+        words = [w for w in words if wordfreq.word_frequency(w.split(" ")[0], "en") > 0]
     if semantic_category is not None and semantic_category in kwargs:
         words = [wordnet_lemmatizer.lemmatize(w) for w in words]  # Lemmatize words for better matching with category words
         category_words = kwargs[semantic_category]
@@ -424,6 +431,7 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
             features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
+            features[f"{response_key}_num_clusters"] = cluster_metrics["num_clusters"]
             features[f"{response_key}_pause_rate"], features[f"{response_key}_pause_rate_total_pauses"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
             features[f"{response_key}_speech_rate"], features[f"{response_key}_speech_rate_total_time"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
         
@@ -440,6 +448,7 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
             features[f"{response_key}_num_switches"] = cluster_metrics["num_switches"]
             features[f"{response_key}_avg_cluster_size"] = cluster_metrics["avg_cluster_size"]
             features[f"{response_key}_total_words"] = cluster_metrics["total_words"]
+            features[f"{response_key}_num_clusters"] = cluster_metrics["num_clusters"]
             features[f"{response_key}_pause_rate"], features[f"{response_key}_pause_rate_total_pauses"] = pause_rate(response_data[response_key]["pauses"], pause_threshold_in_seconds=0.5, aggregate="mean")
             features[f"{response_key}_speech_rate"], features[f"{response_key}_speech_rate_total_time"] = speech_rate(response_data[response_key]["full_response"], response_data[response_key]["response_timestamps"])
     
@@ -447,16 +456,19 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
         # Get the overall number of switches
         features[f"{feature_type}_num_switches"] = features.get(f"{q1}_num_switches", 0) + features.get(f"{q2}_num_switches", 0)
 
+        # Get the overall phonetic or semantic number of clusters
+        features[f"{feature_type}_num_clusters"] = features.get(f"{q1}_num_clusters", 0) + features.get(f"{q2}_num_clusters", 0)
+
         # Get the overall phonetic or semantic  specific average cluster size.
         if all(key in features for key in [f"{q1}_avg_cluster_size", f"{q2}_avg_cluster_size"]):
-            features[f"{feature_type}_avg_cluster_size"] = (features[f"{q1}_avg_cluster_size"]*(features[f"{q1}_num_switches"]+1) + features[f"{q2}_avg_cluster_size"]*(features[f"{q2}_num_switches"]+1)) / (features[f"{q1}_num_switches"] + features[f"{q2}_num_switches"] + 2)
-        elif f"{q1}_avg_cluster_size" in features and f"{q1}_num_switches" in features:
+            features[f"{feature_type}_avg_cluster_size"] = (features[f"{q1}_avg_cluster_size"]*(features[f"{q1}_num_clusters"]) + features[f"{q2}_avg_cluster_size"]*(features[f"{q2}_num_clusters"])) / (features[f"{q1}_num_clusters"] + features[f"{q2}_num_clusters"])
+        elif f"{q1}_avg_cluster_size" in features and f"{q1}_num_clusters" in features:
             features[f"{feature_type}_avg_cluster_size"] = features[f"{q1}_avg_cluster_size"]
-        elif f"{q2}_avg_cluster_size" in features and f"{q2}_num_switches" in features:
+        elif f"{q2}_avg_cluster_size" in features and f"{q2}_num_clusters" in features:
             features[f"{feature_type}_avg_cluster_size"] = features[f"{q2}_avg_cluster_size"]
         else:
             features[f"{feature_type}_avg_cluster_size"] = 0.0
-        
+
         for metric in ["word_frequency_mean", "word_length_mean", "age_of_acquisition_mean"]:
             features[f"{feature_type}_{metric}"] = features.get(f"{q1}_{metric}", 0.0) * features.get(f"{q1}_{metric.replace('mean', 'total_words')}", 0) + features.get(f"{q2}_{metric}", 0.0) * features.get(f"{q2}_{metric.replace('mean', 'total_words')}", 0)
             features[f"{feature_type}_{metric.replace('mean', 'total_words')}"] = features.get(f"{q1}_{metric.replace('mean', 'total_words')}", 0) + features.get(f"{q2}_{metric.replace('mean', 'total_words')}", 0)
