@@ -158,6 +158,48 @@ def age_of_acquisition(response: list, aoa_path: str, aoa_sec_path, aggregate: s
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
+def compute_cluster_metrics(clusters: dict, word_groups: dict):
+    """
+    This is the method for computing the cluster metrics, mainly the average cluster size of unique clusters, and the unique clusters
+    :param clusters: The dictionary of clusters with cluster ids as keys and lists of words in the cluster as values
+    :param word_groups: The dictionary with words as keys and the groups they belong to as values
+    """
+    # We would assign groups which are common to all the words in the clusters as groups for the cluster
+    # The clusters would then be merged if they share one or more common group. The merge would be done iteratively until there are no more clusters to merge. Once we have the final clusters, we would calculate the average cluster size of unique clusters and the number of unique clusters
+    cluster_groups = {}
+    for cluster_id, cluster_words in clusters.items():
+        common_groups = set(word_groups[cluster_words[0]])
+        for word in cluster_words[1:]:
+            common_groups.intersection_update(set(word_groups[word]))
+        cluster_groups[cluster_id] = common_groups
+    
+    print(clusters)
+    # We would merge clusters that share at least one common group iteratively until there are no more clusters to merge
+    delete_clusters = set()
+    for cluster_id1, groups1 in cluster_groups.items():
+        for cluster_id2, groups2 in cluster_groups.items():
+            if cluster_id1 >= cluster_id2 or cluster_id1 in delete_clusters or cluster_id2 in delete_clusters:
+                continue
+            if groups1.intersection(groups2):
+                # Merge the clusters
+                clusters[cluster_id1].extend(clusters[cluster_id2])
+                clusters[cluster_id1] = list(set(clusters[cluster_id1]))  # Keep unique words only
+                # The merged groups would be the intersection of the groups of the two clusters
+                cluster_groups[cluster_id1] = cluster_groups[cluster_id1].intersection(cluster_groups[cluster_id2])
+                # Remove the non merged cluster
+                delete_clusters.add(cluster_id2)
+
+    for cluster_id in delete_clusters:
+        del clusters[cluster_id]
+        del cluster_groups[cluster_id]
+    
+    print(clusters)
+    
+    # Once the merge is done, we would calculate the average cluster size, which is the average number of words in each cluster minus one (since a cluster of size n has n-1 switches) and the number of unique clusters
+    avg_cluster_size = sum(len(cluster)-1 for cluster in clusters.values()) / len(clusters) if clusters else 0.0
+    num_clusters = len(clusters)
+    return avg_cluster_size, num_clusters
+
 def neigborhood_density(response: list, clustering_type: str="semantic", letter=None, semantic_category=None, **kwargs) -> dict:
     """
     Docstring for neigborhood_density
@@ -314,8 +356,9 @@ def neigborhood_density(response: list, clustering_type: str="semantic", letter=
             clusters[current_cluster_id] = [word]
     
     num_switches = current_cluster_id
-    avg_cluster_size = sum(len(cluster)-1 for cluster in clusters.values()) / len(clusters) if clusters else 0.0
-    return {"num_switches": num_switches, "avg_cluster_size": avg_cluster_size, "total_words": len(set(words))}
+
+    avg_cluster_size, num_clusters = compute_cluster_metrics(clusters, word_groups)
+    return {"num_switches": num_switches, "avg_cluster_size": avg_cluster_size, "total_words": len(set(words)), "num_clusters": num_clusters}
 
 def pause_rate(pauses, pause_threshold_in_seconds: float, aggregate: str="mean"):
     """
