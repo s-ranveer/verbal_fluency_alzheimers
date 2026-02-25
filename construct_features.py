@@ -550,36 +550,10 @@ if __name__ == "__main__":
         for col in binned_features_df.columns:
             if col == "patient_id":
                 continue
-
-            try:
-                binned_features_df[col] = pd.qcut(
-                    binned_features_df[col],
-                    q=3,
-                    labels=False,
-                    duplicates="raise"
-                )
-
-            except ValueError:
-                # Handle quantiles being equal case properly
-                q_33, q_66 = np.quantile(binned_features_df[col], [1/3, 2/3])
-                if np.abs(q_33 - q_66) < 1e-5:
-                    # We  would assign all values to bin 0 if the 33rd and 66th percentiles are the same, otherwise we would have an error when trying to bin the data
-                    col_values = binned_features_df[col]
-
-                    positive_mask = col_values > q_66
-
-                # Assign zeros to bin 0
-                binned_features_df[col] = 0
-
-                if positive_mask.sum() > 1:
-                    binned_features_df.loc[positive_mask, col] = (
-                        pd.qcut(
-                            col_values[positive_mask],
-                            q=2,
-                            labels=False
-                        ) + 1
-                    )
-
-                    
+            else:
+                # Bin the features based on the sample mean into two bins
+                mean = binned_features_df[col].mean()
+                binned_features_df[col] = binned_features_df[col].apply(lambda x: 0 if x < mean else 1)
+    
         binned_features_df.to_csv(binned_output_path, index=False)
     
