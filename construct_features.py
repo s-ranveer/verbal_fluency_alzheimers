@@ -179,7 +179,6 @@ def compute_cluster_metrics(clusters: dict, word_groups: dict):
             common_groups.intersection_update(set(word_groups[word]))
         cluster_groups[cluster_id] = common_groups
     
-    print(clusters)
     # We would merge clusters that share at least one common group iteratively until there are no more clusters to merge
     delete_clusters = set()
     for cluster_id1, groups1 in cluster_groups.items():
@@ -198,8 +197,6 @@ def compute_cluster_metrics(clusters: dict, word_groups: dict):
     for cluster_id in delete_clusters:
         del clusters[cluster_id]
         del cluster_groups[cluster_id]
-    
-    print(clusters)
     
     # Once the merge is done, we would calculate the average cluster size, which is the average number of words in each cluster minus one (since a cluster of size n has n-1 switches) and the number of unique clusters
     avg_cluster_size = sum(len(cluster)-1 for cluster in clusters.values()) / len(clusters) if clusters else 0.0
@@ -460,12 +457,15 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
         features[f"{feature_type}_num_clusters"] = features.get(f"{q1}_num_clusters", 0) + features.get(f"{q2}_num_clusters", 0)
 
         # Get the overall phonetic or semantic  specific average cluster size.
-        if all(key in features for key in [f"{q1}_avg_cluster_size", f"{q2}_avg_cluster_size"]):
-            features[f"{feature_type}_avg_cluster_size"] = (features[f"{q1}_avg_cluster_size"]*(features[f"{q1}_num_clusters"]) + features[f"{q2}_avg_cluster_size"]*(features[f"{q2}_num_clusters"])) / (features[f"{q1}_num_clusters"] + features[f"{q2}_num_clusters"])
-        elif f"{q1}_avg_cluster_size" in features and f"{q1}_num_clusters" in features:
-            features[f"{feature_type}_avg_cluster_size"] = features[f"{q1}_avg_cluster_size"]
-        elif f"{q2}_avg_cluster_size" in features and f"{q2}_num_clusters" in features:
-            features[f"{feature_type}_avg_cluster_size"] = features[f"{q2}_avg_cluster_size"]
+        if features.get(f"{q1}_num_clusters", 0) + features.get(f"{q2}_num_clusters", 0) > 0:
+            if all(key in features for key in [f"{q1}_avg_cluster_size", f"{q2}_avg_cluster_size"]):
+                features[f"{feature_type}_avg_cluster_size"] = (features[f"{q1}_avg_cluster_size"]*(features[f"{q1}_num_clusters"]) + features[f"{q2}_avg_cluster_size"]*(features[f"{q2}_num_clusters"])) / (features[f"{q1}_num_clusters"] + features[f"{q2}_num_clusters"])
+            elif f"{q1}_avg_cluster_size" in features and f"{q1}_num_clusters" in features:
+                features[f"{feature_type}_avg_cluster_size"] = features[f"{q1}_avg_cluster_size"]
+            elif f"{q2}_avg_cluster_size" in features and f"{q2}_num_clusters" in features:
+                features[f"{feature_type}_avg_cluster_size"] = features[f"{q2}_avg_cluster_size"]
+            else:
+                features[f"{feature_type}_avg_cluster_size"] = 0.0
         else:
             features[f"{feature_type}_avg_cluster_size"] = 0.0
 
@@ -532,6 +532,7 @@ if __name__ == "__main__":
                 except json.JSONDecodeError:
                     print(f"Error decoding JSON in file: {file}. Skipping this file.")
                     continue
+            print("Processing patient_id", p_id)
             features = process_data(data["responses"], aoa_path, aoa_sec_path, {"animal_groups": animal_groups, "vegetable_groups": vegetable_groups, "animal": animals, "vegetable": vegetables})
             features["patient_id"] = p_id
             if features_df is None:
