@@ -10,11 +10,11 @@ import numpy as np
 from tqdm import tqdm
 
 
-input_dir = "/home/rxs174730/programming/speech/outputs/transcriptions_wo_speakers/year_1"
-aoa_path = "data/age_of_acquisition.xlsx"
-aoa_sec_path = "data/age_of_acquisition_secondary.xlsx"
-output_path = "/home/rxs174730/programming/speech/outputs/features_year_1.csv"
-binned_output_path = "/home/rxs174730/programming/speech/outputs/features_year_1_binned.csv"
+input_dir = ""
+aoa_path = ""
+aoa_sec_path = ""
+output_path = ""
+binned_output_path = ""
 
 def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_category=None, **kwargs):
     # We would use the wordfreq library to calculate the frequency of words in the response
