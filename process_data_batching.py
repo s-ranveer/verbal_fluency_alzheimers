@@ -64,8 +64,8 @@ def create_prompts(system_prompt: str, transcripts: List[tuple[str, str]], token
 if __name__ == "__main__":
     # Configuration
     BATCH_SIZE = 4  # Adjust based on your GPU memory
-    TRANSCRIPT_DIR = "/home/rxs174730/programming/speech/data/transcriptions_wo_speakers/year_3"
-    OUTPUT_DIR = "/home/rxs174730/programming/speech/outputs/transcriptions_wo_speakers/year_3"
+    TRANSCRIPT_DIR = ""
+    OUTPUT_DIR = ""
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
