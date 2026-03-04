@@ -12,5 +12,5 @@ The dataset will not be made available at the moment
 1) ```phonemic.py.py```: This is the file storing the influence graph elicited from the expert.
 2) ```compute_QI.py```: This is the file required to compute the monotonic influences
 3) ```test_quake.py```: This is the file for loading the dataset, fitting the network adn extracting the qualitative influences.
-To run the QuaKE code, ```python test_quake.py --fluency semantic```
+To run the QuaKE code, ```python test_quake.py --fluency phonemic```
 
