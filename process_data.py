@@ -5,6 +5,8 @@ from typing import List, Dict, Optional
 from vllm import LLM, SamplingParams
 from vllm.sampling_params import StructuredOutputsParams
 
+save_path = ""
+transcript_path = ""
 
 # Describe the structure for the output that we need to process
 class Pause(BaseModel):
@@ -32,7 +34,7 @@ if __name__ == "__main__":
         system_prompt = file.read()
     
     print("Loading the transcript...")
-    with open("/home/rxs174730/programming/speech/data/transcriptions_wo_speakers/year_3/RWRAD_009_CogTest_whisperx.txt", "r") as file:
+    with open("transcript_path", "r") as file:
         transcript = file.read()
     
     print("Creating the user prompt...")
@@ -67,7 +69,8 @@ if __name__ == "__main__":
     print(response_text)
 
     # Save the response to a JSON file
-    with open("/home/rxs174730/programming/speech/outputs/transcriptions_wo_speakers/year_3/RWRAD_009_CogTest_whisperx_processed.json", "w") as json_file:
+
+    with open(save_path, "w") as json_file:
         json_text = json.loads(response_text)  # Convert string to JSON
         json.dump(json_text, json_file, indent=4)
     
