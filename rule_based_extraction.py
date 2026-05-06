@@ -215,10 +215,12 @@ if __name__ == "__main__":
             best_per_type = {}  # match_type -> entry dict
 
             for segment in segments:
-                match_type, words, extracted_answer = relevant_components_found(
+                # relevant_components_found now returns a list of (match_type, extracted_answer)
+                found_matches = relevant_components_found(
                     segment, animal_set, vegetable_set, word_list_letters
                 )
-                if match_type is None:
+                
+                if not found_matches:
                     continue
 
                 # full_response: original casing lines joined
@@ -232,18 +234,19 @@ if __name__ == "__main__":
                 else:
                     seg_start = seg_end = None
 
-                entry = {
-                    "match_type":          match_type,
-                    "full_response":       full_response,
-                    "response_timestamps": [{"start": seg_start, "end": seg_end}] if seg_start else [],
-                    "extracted_answer":    extracted_answer,
-                    "pauses":              [],
-                }
+                for match_type, extracted_answer in found_matches:
+                    entry = {
+                        "match_type":          match_type,
+                        "full_response":       full_response,
+                        "response_timestamps": [{"start": seg_start, "end": seg_end}] if seg_start else [],
+                        "extracted_answer":    extracted_answer,
+                        "pauses":              [],
+                    }
 
-                # Keep this segment only if it has more extracted answers than the current best
-                if (match_type not in best_per_type or
-                        len(extracted_answer) > len(best_per_type[match_type]["extracted_answer"])):
-                    best_per_type[match_type] = entry
+                    # Keep this segment only if it has more extracted answers than the current best
+                    if (match_type not in best_per_type or
+                            len(extracted_answer) > len(best_per_type[match_type]["extracted_answer"])):
+                        best_per_type[match_type] = entry
 
             # Assign sequential keys in a stable order
             type_order = ["word_list_f", "word_list_l", "animal", "vegetable"]
