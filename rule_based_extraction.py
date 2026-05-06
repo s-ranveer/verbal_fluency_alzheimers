@@ -25,81 +25,63 @@ def relevant_components_found(segment, animal_set, vegetable_set, word_list_lett
                                min_span_density=0.10, min_unique_matches=3,
                                min_word_list_count=3):
     """
-    Returns (match_type, words, extracted_answer) where:
-      - match_type: "animal" | "vegetable" | "word_list" | None
-      - words: the span of words for the segment (truncated for animal/vegetable)
-      - extracted_answer: the specific matched items (category words or letter-starting words)
+    Returns a list of (match_type, extracted_answer) pairs.
+    A single segment can yield multiple matches (e.g. L-words task + animal task
+    that share the same begin/stop window in the transcript).
+
+    match_type: "animal" | "vegetable" | "word_list_f" | "word_list_l" (etc.)
+    extracted_answer: specific matched words for that type
     """
-    match_type = None
     words = []
     for line in segment["cleaned"]:
         words.extend([word for word in re.sub(r'[^a-zA-Z\s]', '', line).split(" ") if word != ""])
 
-    # Per-letter word list: check each letter independently so F and L segments are separate.
-    # Counts how many words in the segment start with that specific letter.
-    word_list_counts = {letter: 0 for letter in word_list_letters}
-    for word in words:
-        if word[0] in word_list_counts:
-            word_list_counts[word[0]] += 1
-
-    # Check for matches with animal and vegetable categories (with lemmatization for plurals)
-    animal_matches = 0
-    vegetable_matches = 0
-    for word in words:
-        lemma = _lemmatizer.lemmatize(word, pos='n')  # singularize: lions->lion, oxen->ox
-        if word in animal_set or lemma in animal_set:
-            animal_matches += 1
-        if word in vegetable_set or lemma in vegetable_set:
-            vegetable_matches += 1
-
     if len(words) == 0:
-        return None, words, []
+        return []
 
-    # We only consider the common nouns (NN, NNS, NNP, NNPS) for the word_list threshold
-    common_words_count = len([w for w in words if pos_tag([w])[0][1] in ["NN", "NNS", "NNP", "NNPS"]])
-
-    # Animal/vegetable: span from first to last category word.
-    # Valid only if >= min_category_matches words found AND span density >= min_span_density
-    # (density filter kills false positives where animal words are scattered across a long span).
     def in_set(w, s):
         return w in s or _lemmatizer.lemmatize(w, pos='n') in s
 
-    animal_indices    = [i for i, w in enumerate(words) if in_set(w, animal_set)]
-    vegetable_indices = [i for i, w in enumerate(words) if in_set(w, vegetable_set)]
+    matches = []
 
-    extracted_answer = []
-
+    # ── Animal ──────────────────────────────────────────────────────────────────
+    animal_indices = [i for i, w in enumerate(words) if in_set(w, animal_set)]
     if len(animal_indices) >= min_category_matches:
-        span_length = animal_indices[-1] - animal_indices[0] + 1
-        density = len(animal_indices) / span_length
-        # Also require >= min_unique_matches distinct animals (catches repeated incidental mentions)
-        unique_animals = len({_lemmatizer.lemmatize(words[i], pos='n') for i in animal_indices})
-        if density >= min_span_density and unique_animals >= min_unique_matches:
-            match_type = "animal"
-            words = words[animal_indices[0]:animal_indices[-1] + 1]
-            extracted_answer = [w for w in words if in_set(w, animal_set)]
+        span_length   = animal_indices[-1] - animal_indices[0] + 1
+        density       = len(animal_indices) / span_length
+        unique_count  = len({_lemmatizer.lemmatize(words[i], pos='n') for i in animal_indices})
+        if density >= min_span_density and unique_count >= min_unique_matches:
+            span_words      = words[animal_indices[0]:animal_indices[-1] + 1]
+            extracted       = [w for w in span_words if in_set(w, animal_set)]
+            matches.append(("animal", extracted))
 
-    if match_type is None and len(vegetable_indices) >= min_category_matches:
-        span_length = vegetable_indices[-1] - vegetable_indices[0] + 1
-        density = len(vegetable_indices) / span_length
-        unique_vegetables = len({_lemmatizer.lemmatize(words[i], pos='n') for i in vegetable_indices})
-        if density >= min_span_density and unique_vegetables >= min_unique_matches:
-            match_type = "vegetable"
-            words = words[vegetable_indices[0]:vegetable_indices[-1] + 1]
-            extracted_answer = [w for w in words if in_set(w, vegetable_set)]
+    # ── Vegetable ────────────────────────────────────────────────────────────────
+    veg_indices = [i for i, w in enumerate(words) if in_set(w, vegetable_set)]
+    if len(veg_indices) >= min_category_matches:
+        span_length   = veg_indices[-1] - veg_indices[0] + 1
+        density       = len(veg_indices) / span_length
+        unique_count  = len({_lemmatizer.lemmatize(words[i], pos='n') for i in veg_indices})
+        if density >= min_span_density and unique_count >= min_unique_matches:
+            span_words      = words[veg_indices[0]:veg_indices[-1] + 1]
+            extracted       = [w for w in span_words if in_set(w, vegetable_set)]
+            matches.append(("vegetable", extracted))
 
-    # Per-letter word list: each letter checked independently
-    # Also require a minimum raw count (not just ratio) to avoid 2-word flukes
-    if match_type is None:
-        for letter in word_list_letters:
-            letter_count = word_list_counts[letter]
-            if (letter_count >= min_word_list_count and
-                    letter_count / max(1, common_words_count) >= word_list_threshold):
-                match_type = f"word_list_{letter}"
-                extracted_answer = [w for w in words if w[0] == letter]
-                break
+    # ── Word list (per letter, span-based density) ───────────────────────────────
+    # Use span density (first→last letter word) so the ratio isn't diluted by
+    # animal/vegetable words that follow in the same segment.
+    for letter in word_list_letters:
+        letter_indices = [i for i, w in enumerate(words) if w[0] == letter]
+        if len(letter_indices) < min_word_list_count:
+            continue
+        span_length = letter_indices[-1] - letter_indices[0] + 1
+        density     = len(letter_indices) / span_length
+        if density >= word_list_threshold:
+            span_words = words[letter_indices[0]:letter_indices[-1] + 1]
+            extracted  = [w for w in span_words if w[0] == letter]
+            matches.append((f"word_list_{letter}", extracted))
 
-    return match_type, words, extracted_answer
+    return matches
+
 
 
 def parse_timestamp(line):
