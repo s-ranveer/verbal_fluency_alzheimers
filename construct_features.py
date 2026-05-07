@@ -9,6 +9,8 @@ import pronouncing
 import numpy as np
 from tqdm import tqdm
 
+# TODO: Report the words which were invalidated due to not starting with the correct letter or having a word frequency of 0 or not belonging to the group in question
+# This way we can reprompt the LLM to ask for possible corrections for those words
 
 input_dir = "/home/rxs174730/programming/speech/outputs/transcriptions_corrected/year_1"
 aoa_path = "data/age_of_acquisition.xlsx"
@@ -26,22 +28,24 @@ def word_frequency(response: list, aggregate: str="mean", letter=None, semantic_
     :return: Mean word frequency or total frequency of all words as wella s the total number of words considered for the calculation
     """
     words = [r.strip().lower() for r in response]
-    words = [w.replace("_", " ") for w in words] 
+    words = [w.replace("_", " ") for w in words]
+    not_words = [w for w in words if wordfreq.word_frequency(w.split(" ")[0], "en") == 0]
     original_count = len(words)
     if letter is not None:
         words = [w for w in words if w.startswith(letter)]
+        not_words = not_words + [w for w in words if not w.startswith(letter)]
         words = [w for w in words if wordfreq.word_frequency(w.split(" ")[0], "en") > 0]
+
     if semantic_category is not None and semantic_category in kwargs:
         category_words = kwargs[semantic_category]
+        not_words = not_words + [w for w in words if w not in category_words]
         words = [w for w in words if w in category_words]
-    new_count = len(words)
-    invalidated_count = original_count - new_count
     words = list(set(words))  # Consider unique words only
     frequencies = [wordfreq.word_frequency(word, "en") for word in words]
     if aggregate == "total":
-        return sum(frequencies), len(frequencies), original_count, invalidated_count
+        return sum(frequencies), len(frequencies), original_count, len(not_words), not_words
     elif aggregate == "mean":
-        return sum(frequencies) / len(frequencies) if len(frequencies) > 0 else 0.0, original_count, invalidated_count if len(frequencies) > 0 else 0.0, len(frequencies)
+        return sum(frequencies) / len(frequencies) if len(frequencies) > 0 else 0.0, original_count, len(not_words), len(frequencies), not_words
     else:
         raise NotImplementedError(f"Aggregate method {aggregate} not implemented. Use 'mean' or 'total'.")
 
@@ -436,7 +440,7 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
                 letter = "f"
             else:
                 letter = "l"
-            features[f"{response_key}_word_frequency_mean"], features[f"{response_key}_word_frequency_total_words"], features[f"{response_key}_word_frequency_original_count"], features[f"{response_key}_word_frequency_invalidated_count"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
+            features[f"{response_key}_word_frequency_mean"], features[f"{response_key}_word_frequency_total_words"], features[f"{response_key}_word_frequency_original_count"], features[f"{response_key}_word_frequency_invalidated_count"], features[f"{response_key}_word_frequency_not_words"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
             features[f"{response_key}_word_length_mean"], features[f"{response_key}_word_length_total_words"], features[f"{response_key}_word_length_original_count"], features[f"{response_key}_word_length_invalidated_count"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", letter=letter)
             features[f"{response_key}_age_of_acquisition_mean"], features[f"{response_key}_age_of_acquisition_total_words"], features[f"{response_key}_age_of_acquisition_original_count"], features[f"{response_key}_age_of_acquisition_invalidated_count"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aoa_sec_path=aoa_sec_path, aggregate="mean", letter=letter)
             cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="phonetic", letter=letter)
@@ -453,7 +457,7 @@ def process_data(response_data: dict, aoa_path: str, aoa_sec_path: str, clusteri
         else:
             semantic_category = "vegetable"
         if response_key in response_data and response_data[response_key]:
-            features[f"{response_key}_word_frequency_mean"], features[f"{response_key}_word_frequency_total_words"], features[f"{response_key}_word_frequency_original_count"], features[f"{response_key}_word_frequency_invalidated_count"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
+            features[f"{response_key}_word_frequency_mean"], features[f"{response_key}_word_frequency_total_words"], features[f"{response_key}_word_frequency_original_count"], features[f"{response_key}_word_frequency_invalidated_count"], features[f"{response_key}_word_frequency_not_words"] = word_frequency(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
             features[f"{response_key}_word_length_mean"], features[f"{response_key}_word_length_total_words"], features[f"{response_key}_word_length_original_count"], features[f"{response_key}_word_length_invalidated_count"] = word_length(response_data[response_key]["extracted_answer"], aggregate="mean", semantic_category=semantic_category, **clustering_data)
             features[f"{response_key}_age_of_acquisition_mean"], features[f"{response_key}_age_of_acquisition_total_words"], features[f"{response_key}_age_of_acquisition_original_count"], features[f"{response_key}_age_of_acquisition_invalidated_count"] = age_of_acquisition(response_data[response_key]["extracted_answer"], aoa_path, aoa_sec_path=aoa_sec_path, aggregate="mean", semantic_category=semantic_category, **clustering_data)
             cluster_metrics = neigborhood_density(response_data[response_key]["extracted_answer"], clustering_type="semantic", semantic_category = semantic_category, **clustering_data)
