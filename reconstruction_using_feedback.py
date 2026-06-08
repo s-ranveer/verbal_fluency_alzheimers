@@ -1,8 +1,34 @@
 # TODO: Implement the file where the feedback from the symbolic grounding, mainly the invalidated words along with the llm extracted json and transcript section would be passed for possible correction and re-extraction of features. This would be used in the second pass of the feature extraction process where we can use the feedback to refine our feature extraction and possibly improve the performance of our models.
 import os
+import json
 import pandas as pd
 import argparse
+from pydantic import BaseModel
+from typing import List, Dict, Optional
+from pathlib import Path
+from vllm import LLM, SamplingParams
+from vllm.sampling_params import StructuredOutputsParams
 
+
+# Describe the structure for the output that we need to process
+class Pause(BaseModel):
+    start: str
+    end: str
+
+class Timestamp(BaseModel):
+    start: str
+    end: str
+
+class Response(BaseModel):
+    full_response: str
+    response_timestamps: List[Timestamp]  # {"start": "timestamp", "end": "timestamp"}
+    extracted_answer: List[str] # List of words from the response
+    pauses: List[Pause]
+
+class OutputSchema(BaseModel):
+    responses: Dict[str, Optional[Response]]
+
+    
 parser = argparse.ArgumentParser()
 parser.add_argument("--input_prompt_path", type=str, required=True, help="Path to the input data containing the LLM extracted JSON and transcript sections.")
 parser.add_argument("--input_transcriptions_path", type=str, required=True, help="Path to the input data containing the LLM extracted JSON and transcript sections.")

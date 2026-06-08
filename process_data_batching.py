@@ -1,6 +1,7 @@
 # This is the file for processing the data regarding Alzheimer's speech dataset
 import json
 import os
+import argparse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from pathlib import Path
@@ -61,11 +62,19 @@ def create_prompts(system_prompt: str, transcripts: List[tuple[str, str]], token
     
     return prompts
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--transcript_dir", type=str, required=True, help="Directory containing transcript files.")
+parser.add_argument("--output_dir", type=str, required=True, help="Directory to save processed outputs.")
+parser.add_argument("--batch_size", type=int, default=4, help="Batch size for processing transcripts.")
+parser.add_argument("--model", type=str, default="google/medgemma-27b-text-it", help="vLLM model to use for processing.")
+parser.add_argument("--seed", type=int, default=0, help="Random seed for sampling.")
+args = parser.parse_args()
+
 if __name__ == "__main__":
     # Configuration
-    BATCH_SIZE = 4  # Adjust based on your GPU memory
-    TRANSCRIPT_DIR = ""
-    OUTPUT_DIR = ""
+    BATCH_SIZE = args.batch_size
+    TRANSCRIPT_DIR = args.transcript_dir
+    OUTPUT_DIR = args.output_dir
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
@@ -92,7 +101,8 @@ if __name__ == "__main__":
     
     # Sampling parameters
     sampling_params = SamplingParams(
-        temperature=0.0, 
+        seed= args.seed,
+        temperature=0.3, 
         max_tokens=30000, 
         structured_outputs=StructuredOutputsParams(json=OutputSchema.model_json_schema())
     )
