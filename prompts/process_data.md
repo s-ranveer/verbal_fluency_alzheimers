@@ -14,7 +14,6 @@ Your task is to extract the following from the transcripts:
 1. The full response by the participant for the prompt ignoring the other speaker.
 2. The extracted answer from the full response where one omits the filler words and incorrect answers. Repetitions are allowed.
 3. The starting and ending timestamp of the participant response.
-4. Individual pauses during the participant's response where the pause is at least 1 second, calculated as the time gap between the end timestamp of one utterance and the start timestamp of the next utterance.
 
 **Rules**
 1. Do not infer or reconstruct missing speech.
@@ -25,7 +24,7 @@ Your task is to extract the following from the transcripts:
 
 **Edge Cases**
 - If a participant self-corrects (e.g., "cat... no, dog"), include both in full_response but only the final word in extracted_answer if valid.
-- If the examiner interrupts, note the interruption point as the end timestamp.
+- If the examiner interrupts, note the interruption point as the end timestamp. However, if it only a pause by the original speaker, do not create additional time stamps in response_timestamps.
 
 **Output JSON Schema**
 ```json
@@ -38,16 +37,6 @@ Your task is to extract the following from the transcripts:
         "end": "string"
       },
       "extracted_answer": ["word1", "word2"],
-      "pauses": [
-        {
-          "start": "string",
-          "end": "string"
-        },
-        {
-          "start": "string",
-          "end": "string"
-        }
-      ]
     },
     "R2": { },
     "R3": { },

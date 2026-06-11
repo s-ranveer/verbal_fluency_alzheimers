@@ -2,4 +2,6 @@
 /outputs
 /extra
 *.json
+*.log
 nohup.out
+__pycache__
